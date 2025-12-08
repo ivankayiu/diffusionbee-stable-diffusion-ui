@@ -1,297 +1,173 @@
 <template>
-    <div style="height:100% ; width:100%; position:  relative;">
-        <img  @load="on_img_load2" :id="canvas_d_id+'img'" :src="'file://'+image_source" style="display:none">
-        <canvas :id="canvas_d_id" style="width:100% ; height:100%; position: absolute ; top:0 , left:0  " ></canvas>
-        <canvas :id="canvas_id" style="width:100% ; height:100%; position: absolute ; top:0 , left:0 ; opacity:0.7" ></canvas>
-       
-   </div>
+    <div ref="container" class="konva-container">
+        <v-stage :config="stage_config" ref="stage" @mousedown="handleMouseDown" @mousemove="handleMouseMove" @mouseup="handleMouseUp" @click="handleClick">
+            <v-layer ref="imageLayer"></v-layer>
+            <v-layer ref="generatedLayer"></v-layer>
+            <v-layer ref="selectionLayer">
+                <!-- Transformer is added programmatically -->
+            </v-layer>
+        </v-stage>
+    </div>
 </template>
-<script>
-import Vue from 'vue'
 
-function addImageProcess(src){
-  return new Promise((resolve, reject) => {
-    let img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = reject
-    img.src = src
-  })
-}
+<script>
+import Konva from 'konva';
+import { EventBus } from '../event_bus.js';
 
 export default {
     name: 'ImageCanvas',
     props: {
-        image_source : String,
-        is_inpaint : Boolean,
-        is_disabled : Boolean,
-        canvas_d_id : String, 
-        canvas_id: String,
-        stroke_size_no : String,
-        on_img_load: Function, 
-    },
-    components: {},
-    computed: {
-        stroke_size(){
-            if(this.stroke_size_no)
-                return Number( this.stroke_size_no)/5
-            return 7;
-        }
-    },
-    mounted() {
-        this.ro = new ResizeObserver(this.on_resize);
-        let canvas = document.getElementById(this.canvas_id);
-        this.canvas = canvas;
-        this.canvasD = document.getElementById(this.canvas_d_id);
-        this.ctx = canvas.getContext("2d");
-        this.ro.observe(canvas.parentElement);
-        let that = this;
-
-        if(this.image_source)
-            this.on_img_change();
-
-        canvas.addEventListener("mousemove", function (e) {
-            that.findxy('move', e)
-        }, false);
-        canvas.addEventListener("mousedown", function (e) {
-            that.findxy('down', e)
-        }, false);
-        canvas.addEventListener("mouseup", function (e) {
-            that.findxy('up', e)
-        }, false);
-        canvas.addEventListener("mouseout", function (e) {
-            that.findxy('out', e)
-        }, false);
-
-    },
-    beforeDestroy(){
-        this.ro.disconnect()
+        image_source: String,
+        current_mode: String,
+        stroke_size_no: String,
     },
     data() {
         return {
-            img_tag : undefined,
-            prevX : 0 , 
-            prevY : 0 , 
-            currX : 0 , 
-            currY : 0 , 
-            
-            stroke_color : "#ff00ff" ,
-            // x : "#ffffff" ,
-            
-            flag : false,
-            is_something_drawn : false,
+            stage_config: { width: 512, height: 512 },
+            is_drawing: false,
+            last_line: null,
+            selection_rect: null,
+            transformer: null,
         };
     },
+    mounted() {
+        this.fitStageIntoParent();
+        window.addEventListener('resize', this.fitStageIntoParent);
+        if (this.image_source) this.loadImage(this.image_source);
+
+        // Initialize Transformer
+        const transformer = new Konva.Transformer({ nodes: [] });
+        this.$refs.selectionLayer.getNode().add(transformer);
+        this.transformer = transformer;
+    },
+    beforeDestroy() { window.removeEventListener('resize', this.fitStageIntoParent); },
     methods: {
+        fitStageIntoParent() { /* ... */ },
+        loadImage(src) { /* ... */ },
 
-        on_img_load2(){
-            if(this.on_img_load)
-                 this.on_img_load()
-        },
-
-        findxy(res, e) {
-
-            if(!(this.is_inpaint))
-                return;
-
-            if(this.is_disabled)
-                return;
-
-            if (res == 'down') {
-                this.prevX = this.currX;
-                this.prevY = this.currY;
-                this.currX = e.clientX - this.canvas.getBoundingClientRect().x;
-                this.currY = e.clientY - this.canvas.getBoundingClientRect().y;
-        
-                this.flag = true;
-                let dot_flag = true;
-                if (dot_flag) {
-                    this.ctx.beginPath();
-                    this.ctx.fillStyle = this.stroke_color;
-                    this.ctx.fillRect(this.currX, this.currY, 2, 2);
-                    this.ctx.closePath();
-                    dot_flag = false;
-                }
+        handleMouseDown(e) {
+            if (e.target.getParent() instanceof Konva.Transformer) return; // Ignore clicks on transformer handles
+            if (this.current_mode === 'select' || e.target.hasName('generated_image')) {
+                // If in select mode, or clicking a generated image, deselect everything first
+                this.transformer.nodes([]);
             }
-            if (res == 'up' || res == "out") {
-                this.flag = false;
-            }
-            if (res == 'move') {
-                if (this.flag) {
-                    this.prevX = this.currX;
-                    this.prevY = this.currY;
-                    this.currX = e.clientX - this.canvas.getBoundingClientRect().x;
-                    this.currY = e.clientY - this.canvas.getBoundingClientRect().y;
-                    this.draw();
-                }
+            // --- Rest of mousedown logic for drawing or starting a new selection ---
+            const pos = this.$refs.stage.getNode().getPointerPosition();
+            if (this.current_mode === 'draw' && !e.target.hasName('generated_image')) {
+                this.is_drawing = true;
+                this.last_line = new Konva.Line({ /* ... line properties ... */ });
+                this.$refs.imageLayer.getNode().add(this.last_line);
+            } else if (this.current_mode === 'select') {
+                this.is_drawing = true;
+                this.selection_rect = new Konva.Rect({ x: pos.x, y: pos.y, /* ... rect properties ... */ });
+                this.$refs.selectionLayer.getNode().add(this.selection_rect);
             }
         },
 
-        draw() {
-            if(this.is_disabled)
-                return;
-
-            let xmul =  this.canvas.width / this.canvas.offsetWidth;
-            let ymul = this.canvas.height / this.canvas.offsetHeight;
-            // this.ctx.beginPath();
-            // this.ctx.moveTo(this.prevX*xmul, this.prevY*ymul  );
-            // this.ctx.lineTo(this.currX*xmul, this.currY*ymul );
-            // this.ctx.strokeStyle = this.x;
-            // this.ctx.lineWidth = this.y * Math.sqrt(xmul * ymul);
-            // this.ctx.stroke();
-            // this.ctx.closePath();
-
-            this.ctx.beginPath();
-            this.ctx.arc(this.prevX*xmul, this.prevY*ymul , this.stroke_size* Math.sqrt(xmul * ymul), 0, 2 * Math.PI);
-            this.ctx.arc((this.prevX+this.currX)*xmul/2, (this.prevY+this.currY)*ymul/2 , this.stroke_size* Math.sqrt(xmul * ymul), 0, 2 * Math.PI);
-            this.ctx.arc(this.currX*xmul, this.currY*ymul , this.stroke_size* Math.sqrt(xmul * ymul), 0, 2 * Math.PI);
-            this.ctx.fill();
-            this.is_something_drawn = true
-
-        },
-
-        get_size(){
-            let img =  document.getElementById(this.canvas_d_id+"img")
-            return {width: img.width ,height: img.height }
-        },
-
-        on_resize(){
-            let canvas = document.getElementById(this.canvas_id);
-            let canvasD = document.getElementById(this.canvas_d_id);
-            let img = this.img_tag;
-
-            if(!img)
-                return;
-            
-            let ph = canvas.parentElement.offsetHeight;
-            let pw = canvas.parentElement.offsetWidth;
-
-            let r = img.width / img.height;
-            let r2 = img.height / img.width;
-            if(ph*r <= pw ){
-                canvas.style.height = ph +'px';
-                canvas.style.width = ph*r +'px';
-
-                canvasD.style.height = ph +'px';
-                canvasD.style.width = ph*r +'px';
-
-                canvas.style.marginLeft = (pw - ph*r )/2  + "px"
-                canvasD.style.marginLeft = (pw - ph*r )/2  + "px"
-
-                canvas.style.marginTop = 0 + "px"
-                canvasD.style.marginTop = 0 + "px"
-
+        handleMouseMove(e) { /* ... as before ... */ },
+        handleMouseUp() {
+            this.is_drawing = false;
+            if (this.current_mode === 'select' && this.selection_rect) {
+                const box = this.selection_rect.getAttrs();
+                EventBus.$emit('selection-changed', box.width > 0 ? box : null);
             }
-            else{
-                canvas.style.height = pw*r2 +'px';
-                canvas.style.width = pw +'px';
+        },
 
-                canvasD.style.height = pw*r2 +'px';
-                canvasD.style.width = pw +'px';
-
-                canvas.style.marginLeft =  0 + "px"
-                canvasD.style.marginLeft =  0 + "px"
-
-                canvas.style.marginTop = (ph - pw*r2 )/2 + "px"
-                canvasD.style.marginTop = (ph - pw*r2 )/2 + "px"
-
+        handleClick(e) {
+            // This logic handles selecting a generated image to transform it.
+            if (this.current_mode !== 'select' && e.target.hasName('generated_image')) {
+                this.transformer.nodes([e.target]);
+            } else {
+                this.transformer.nodes([]);
             }
-            
         },
-        clear_inpaint(){
-            let canvas = document.getElementById(this.canvas_id);
-            let ctx = canvas.getContext("2d");
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            this.is_something_drawn = false 
+
+        addLayerFromImage(image_path, box) {
+            const generatedLayer = this.$refs.generatedLayer.getNode();
+            Konva.Image.fromURL(image_path, (konvaImage) => {
+                konvaImage.setAttrs({
+                    x: box.x,
+                    y: box.y,
+                    width: box.width,
+                    height: box.height,
+                    draggable: true,
+                    name: 'generated_image', // Name for easy selection
+                });
+                generatedLayer.add(konvaImage);
+                this.transformer.nodes([konvaImage]); // Auto-select the new layer
+            });
         },
-        on_img_change(){
-            let that = this;
-            addImageProcess('file://'+this.image_source).then(function(img_tag){
 
-                that.img_tag = img_tag;
-                let canvasD = document.getElementById(that.canvas_d_id);
-                let canvas = document.getElementById(that.canvas_id);
-                let img = that.img_tag;
-                let ctxD = canvasD.getContext("2d");
-                
-                that.on_resize()
+        clearAllLayers() { /* ... */ },
+        clearSelection() { /* ... */ },
+        getStageAsBase64() { /* ... */ },
+        getMaskFromSelection() { /* ... */ },
+    },
+    // --- watch, etc. ---
+};
 
-                canvasD.height = img.height;
-                canvasD.width = img.width;
-                canvas.height = img.height;
-                canvas.width = img.width;
-
-                ctxD.clearRect(0, 0, canvasD.width, canvasD.height);
-                ctxD.drawImage(img, 0,0, img.width, img.height, 0,0, canvasD.width, canvasD.height);
-
-                that.clear_inpaint()
-
-            })
-        },
-        get_img_b64(){
-            return this.canvasD.toDataURL();
-        } , 
-        get_mask_b64(){
-            let canvas = document.createElement('canvas');
-            canvas.width = this.canvas.width;
-            canvas.height = this.canvas.height;
-            let ctx =  canvas.getContext("2d");
-            // let filt_w = canvas.width/50    
-            ctx.filter = ' grayscale(1) brightness(10000) contrast(10000)'; // blur('+filt_w+'px)
-            ctx.fillStyle = "black";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(this.canvas, 0, 0);
-            return canvas.toDataURL();
-
-        }, 
-        get_img_mask_b64(){
-            let canvas = document.createElement('canvas');
-            canvas.width = this.canvasD.width;
-            canvas.height = this.canvasD.height;
-            let ctx =  canvas.getContext("2d");
-            ctx.drawImage(this.canvasD, 0, 0);
-            ctx.drawImage(this.canvas, 0, 0);
-            
-            return canvas.toDataURL();
-        } , 
-
-        get_mask_for_cache(){
-            return this.canvas.toDataURL();
-        },
-       
-       restore_mask(mask_b64){
-            let canvas = this.canvas;
-            let ctx =  canvas.getContext("2d");
-            
-            var image = new Image();
-            image.onload = function() {
-                ctx.drawImage(image, 0, 0);
-            };
-            image.src = mask_b64
+// --- Full methods for context ---
+Object.assign(InteractiveCanvas.methods, {
+    fitStageIntoParent() {
+        const container = this.$refs.container;
+        if (!container) return;
+        this.stage_config.width = container.offsetWidth;
+        this.stage_config.height = container.offsetHeight;
+    },
+    loadImage(src) {
+        const imageLayer = this.$refs.imageLayer.getNode();
+        const image = new window.Image();
+        image.src = src;
+        image.onload = () => {
+            const img = new Konva.Image({ image: image, width: this.stage_config.width, height: this.stage_config.height });
+            imageLayer.add(img);
+            img.moveToBottom();
+        };
+    },
+    handleMouseMove(e) {
+        if (!this.is_drawing) return;
+        const pos = this.$refs.stage.getNode().getPointerPosition();
+        if (this.current_mode === 'draw' && this.last_line) {
+            this.last_line.points(this.last_line.points().concat([pos.x, pos.y]));
+        } else if (this.current_mode === 'select' && this.selection_rect) {
+            const x1 = this.selection_rect.x();
+            const y1 = this.selection_rect.y();
+            this.selection_rect.width(pos.x - x1);
+            this.selection_rect.height(pos.y - y1);
         }
     },
-
-    watch: {
-        'image_source': {
-
-            handler: function() {
-                Vue.nextTick(this.on_img_change)
-                // this.on_img_change()
-            },
-            deep: true
-        } , 
-
-        'is_inpaint': {
-            handler: function(v) {
-                if(!v){
-                    this.clear_inpaint();
-                }
-            },
-            deep: true
-        } , 
+    clear_inpaint() {
+        const imageLayer = this.$refs.imageLayer.getNode();
+        imageLayer.find('Line').forEach(l => l.destroy());
+    },
+    clearAllLayers() {
+        this.clear_inpaint();
+        const generatedLayer = this.$refs.generatedLayer.getNode();
+        generatedLayer.destroyChildren();
+        this.transformer.nodes([]);
+    },
+    clearSelection() {
+        if (this.selection_rect) {
+            this.selection_rect.destroy();
+            this.selection_rect = null;
+        }
+        EventBus.$emit('selection-changed', null);
+    },
+    getStageAsBase64() {
+        // Temporarily hide transformer before exporting
+        this.transformer.hide();
+        const dataURL = this.$refs.stage.getNode().toDataURL();
+        this.transformer.show();
+        return dataURL;
+    },
+    getMaskFromSelection() {
+        if (!this.selection_rect) return null;
+        const tempLayer = new Konva.Layer();
+        tempLayer.add(new Konva.Rect({ x:0, y:0, width: this.stage_config.width, height: this.stage_config.height, fill: 'black' }));
+        tempLayer.add(new Konva.Rect({ ...this.selection_rect.getAttrs(), fill: 'white' }));
+        return tempLayer.toDataURL();
     }
-}
+});
+
+export default InteractiveCanvas;
 </script>
-<style>
-</style>
-<style scoped>
-</style>

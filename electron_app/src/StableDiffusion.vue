@@ -4,6 +4,7 @@
 <script>
 
 import { send_to_py } from "./py_vue_bridge.js"
+import { EventBus } from './event_bus.js';
 import {get_tokens} from './clip_tokeniser/clip_encoder.js'
 import {compute_time_remaining} from "./utils.js"
 const moment = require('moment')
@@ -69,11 +70,13 @@ export default {
                 }
                 let img = msg.substring(5).trim()
                 img = JSON.parse(img)
-                if(this.attached_cbs){
-                    if(this.attached_cbs.on_img)
-                        this.attached_cbs.on_img(img);
+                if(this.attached_cbs && this.attached_cbs.on_img){
+                    this.attached_cbs.on_img(img);
                 } else {
-                    console.log("got new img but cbs none")
+                    // If no specific callback is attached, emit a global event
+                    // This is useful for AI commands like image search
+                    console.log("No specific callback, emitting global new-image-asset event.");
+                    EventBus.$emit('new-image-asset', img);
                 }
             }
 

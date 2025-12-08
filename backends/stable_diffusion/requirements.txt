@@ -15,3 +15,5 @@ cython
 numexpr
 pandas
 scikit-image
+websockets
+requests
