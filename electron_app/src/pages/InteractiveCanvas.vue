@@ -177,6 +177,7 @@ const InteractiveCanvas = {
 // --- Full methods for context ---
 InteractiveCanvas.methods.saveCommand = function() { /* ... as before ... */ };
 InteractiveCanvas.methods.loadCommandsFromLocalStorage = function() { /* ... as before ... */ };
+// eslint-disable-next-line no-unused-vars
 InteractiveCanvas.methods.executeCommand = function(command) { /* ... as before ... */ };
 
 

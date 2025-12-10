@@ -43,6 +43,7 @@ export default {
     beforeDestroy() { window.removeEventListener('resize', this.fitStageIntoParent); },
     methods: {
         fitStageIntoParent() { /* ... */ },
+        // eslint-disable-next-line no-unused-vars
         loadImage(src) { /* ... */ },
 
         handleMouseDown(e) {
@@ -64,6 +65,7 @@ export default {
             }
         },
 
+        // eslint-disable-next-line no-unused-vars
         handleMouseMove(e) { /* ... as before ... */ },
         handleMouseUp() {
             this.is_drawing = false;
@@ -105,69 +107,4 @@ export default {
     },
     // --- watch, etc. ---
 };
-
-// --- Full methods for context ---
-Object.assign(InteractiveCanvas.methods, {
-    fitStageIntoParent() {
-        const container = this.$refs.container;
-        if (!container) return;
-        this.stage_config.width = container.offsetWidth;
-        this.stage_config.height = container.offsetHeight;
-    },
-    loadImage(src) {
-        const imageLayer = this.$refs.imageLayer.getNode();
-        const image = new window.Image();
-        image.src = src;
-        image.onload = () => {
-            const img = new Konva.Image({ image: image, width: this.stage_config.width, height: this.stage_config.height });
-            imageLayer.add(img);
-            img.moveToBottom();
-        };
-    },
-    handleMouseMove(e) {
-        if (!this.is_drawing) return;
-        const pos = this.$refs.stage.getNode().getPointerPosition();
-        if (this.current_mode === 'draw' && this.last_line) {
-            this.last_line.points(this.last_line.points().concat([pos.x, pos.y]));
-        } else if (this.current_mode === 'select' && this.selection_rect) {
-            const x1 = this.selection_rect.x();
-            const y1 = this.selection_rect.y();
-            this.selection_rect.width(pos.x - x1);
-            this.selection_rect.height(pos.y - y1);
-        }
-    },
-    clear_inpaint() {
-        const imageLayer = this.$refs.imageLayer.getNode();
-        imageLayer.find('Line').forEach(l => l.destroy());
-    },
-    clearAllLayers() {
-        this.clear_inpaint();
-        const generatedLayer = this.$refs.generatedLayer.getNode();
-        generatedLayer.destroyChildren();
-        this.transformer.nodes([]);
-    },
-    clearSelection() {
-        if (this.selection_rect) {
-            this.selection_rect.destroy();
-            this.selection_rect = null;
-        }
-        EventBus.$emit('selection-changed', null);
-    },
-    getStageAsBase64() {
-        // Temporarily hide transformer before exporting
-        this.transformer.hide();
-        const dataURL = this.$refs.stage.getNode().toDataURL();
-        this.transformer.show();
-        return dataURL;
-    },
-    getMaskFromSelection() {
-        if (!this.selection_rect) return null;
-        const tempLayer = new Konva.Layer();
-        tempLayer.add(new Konva.Rect({ x:0, y:0, width: this.stage_config.width, height: this.stage_config.height, fill: 'black' }));
-        tempLayer.add(new Konva.Rect({ ...this.selection_rect.getAttrs(), fill: 'white' }));
-        return tempLayer.toDataURL();
-    }
-});
-
-export default InteractiveCanvas;
 </script>
