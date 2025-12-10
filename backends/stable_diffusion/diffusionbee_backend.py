@@ -4,6 +4,8 @@ import argparse
 from PIL import Image
 import json
 import random
+import requests
+import base64
 import multiprocessing
 import sys
 import copy
@@ -11,6 +13,8 @@ import math
 import time
 import traceback
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -105,6 +109,26 @@ def process_opt(d, generator):
         
         sd_run.img_id = i
 
+        # --- Handle Base64 image inputs for Inpainting ---
+        if d.get("is_inpaint"):
+            if d.get("input_image_b64"):
+                b64_str = d["input_image_b64"].split(",")[1]
+                img_data = base64.b64decode(b64_str)
+                fpath = os.path.join(defualt_data_root, f"inp_{random.randint(0, 100000000)}.png")
+                with open(fpath, 'wb') as f:
+                    f.write(img_data)
+                sd_run.input_image = fpath
+
+            if d.get("mask_image_b64"):
+                b64_str = d["mask_image_b64"].split(",")[1]
+                img_data = base64.b64decode(b64_str)
+                fpath = os.path.join(defualt_data_root, f"mask_{random.randint(0, 100000000)}.png")
+                with open(fpath, 'wb') as f:
+                    f.write(img_data)
+                sd_run.mask_image = fpath
+        # --- End of Base64 handling ---
+
+
         print("got" , d )
 
         outs  = generator.generate(sd_run)
@@ -131,8 +155,49 @@ def process_opt(d, generator):
 
 
 
+def process_ai_command(d):
+    task = d.get("task")
+    if task == "search_image":
+        query = d.get("query", "random")
+        print(f"Searching for image with query: {query}")
+
+        try:
+            # Use a simple, key-less API for demonstration
+            url = f"https://source.unsplash.com/random/1024x768/?{requests.utils.quote(query)}"
+            response = requests.get(url, timeout=15)
+            response.raise_for_status() # Raise an exception for bad status codes
+
+            # Generate a safe filename
+            s = ''.join(filter(str.isalnum, str(query)[:30]))
+            fpath = os.path.join(defualt_data_root, f"search_{s}_{random.randint(0, 100000000)}.png")
+
+            # Save the image
+            with open(fpath, 'wb') as f:
+                f.write(response.content)
+
+            # Send the path back to the frontend using the existing format
+            # IMPORTANT: We reuse the "nwim" (new image) code so the frontend can understand it
+            ret_dict = {"generated_img_path": fpath}
+            print(f"sdbk nwim {json.dumps(ret_dict)}")
+
+        except Exception as e:
+            traceback.print_exc()
+            print(f"sdbk errr Image search failed: {str(e)}")
+
+    else:
+        print(f"sdbk errr Unknown AI command: {task}")
+
 
 def diffusion_bee_main():
+
+    # Start the WebSocket server as a background process
+    try:
+        websocket_server_path = os.path.join(os.path.dirname(__file__), 'websocket_server.py')
+        # Use sys.executable to ensure we use the same python interpreter
+        subprocess.Popen([sys.executable, websocket_server_path])
+        print("WebSocket server started in the background.")
+    except Exception as e:
+        print(f"Failed to start WebSocket server: {e}")
 
     time.sleep(2)
     register_applet(model_container , FrameInterpolator)
@@ -163,7 +228,7 @@ def diffusion_bee_main():
         if inp_str.strip() == "":
             continue
 
-        if  ((not "b2py t2im" in inp_str ) and (not "b2py rapp" in inp_str) ) or "__stop__" in inp_str:
+        if  ((not "b2py t2im" in inp_str ) and (not "b2py rapp" in inp_str) and (not "b2py aicmd" in inp_str) ) or "__stop__" in inp_str:
             continue
 
         if "b2py t2im" in inp_str:
@@ -179,6 +244,15 @@ def diffusion_bee_main():
                 print("sdbk errr %s"%(str(e)))
                 print("py2b eror " + str(e))
 
+        elif "b2py aicmd" in inp_str:
+            inp_str = inp_str.replace("b2py aicmd", "").strip()
+            try:
+                d = json.loads(inp_str)
+                print("sdbk inwk") # working on the input
+                process_ai_command(d)
+            except Exception as e:
+                traceback.print_exc()
+                print(f"sdbk errr {str(e)}")
         elif "b2py rapp" in inp_str:
             inp_str = inp_str.replace("b2py rapp" , "").strip()
             applet_name = inp_str.split(" ")[0]

@@ -3,7 +3,7 @@
         <img  @load="on_img_load2" :id="canvas_d_id+'img'" :src="'file://'+image_source" style="display:none">
         <canvas :id="canvas_d_id" style="width:100% ; height:100%; position: absolute ; top:0 , left:0  " ></canvas>
         <canvas :id="canvas_id" style="width:100% ; height:100%; position: absolute ; top:0 , left:0 ; opacity:0.7" ></canvas>
-       
+
    </div>
 </template>
 <script>
@@ -24,10 +24,10 @@ export default {
         image_source : String,
         is_inpaint : Boolean,
         is_disabled : Boolean,
-        canvas_d_id : String, 
+        canvas_d_id : String,
         canvas_id: String,
         stroke_size_no : String,
-        on_img_load: Function, 
+        on_img_load: Function,
     },
     components: {},
     computed: {
@@ -69,14 +69,14 @@ export default {
     data() {
         return {
             img_tag : undefined,
-            prevX : 0 , 
-            prevY : 0 , 
-            currX : 0 , 
-            currY : 0 , 
-            
+            prevX : 0 ,
+            prevY : 0 ,
+            currX : 0 ,
+            currY : 0 ,
+
             stroke_color : "#ff00ff" ,
             // x : "#ffffff" ,
-            
+
             flag : false,
             is_something_drawn : false,
         };
@@ -101,7 +101,7 @@ export default {
                 this.prevY = this.currY;
                 this.currX = e.clientX - this.canvas.getBoundingClientRect().x;
                 this.currY = e.clientY - this.canvas.getBoundingClientRect().y;
-        
+
                 this.flag = true;
                 let dot_flag = true;
                 if (dot_flag) {
@@ -161,7 +161,7 @@ export default {
 
             if(!img)
                 return;
-            
+
             let ph = canvas.parentElement.offsetHeight;
             let pw = canvas.parentElement.offsetWidth;
 
@@ -195,13 +195,13 @@ export default {
                 canvasD.style.marginTop = (ph - pw*r2 )/2 + "px"
 
             }
-            
+
         },
         clear_inpaint(){
             let canvas = document.getElementById(this.canvas_id);
             let ctx = canvas.getContext("2d");
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            this.is_something_drawn = false 
+            this.is_something_drawn = false
         },
         on_img_change(){
             let that = this;
@@ -212,7 +212,7 @@ export default {
                 let canvas = document.getElementById(that.canvas_id);
                 let img = that.img_tag;
                 let ctxD = canvasD.getContext("2d");
-                
+
                 that.on_resize()
 
                 canvasD.height = img.height;
@@ -229,20 +229,20 @@ export default {
         },
         get_img_b64(){
             return this.canvasD.toDataURL();
-        } , 
+        } ,
         get_mask_b64(){
             let canvas = document.createElement('canvas');
             canvas.width = this.canvas.width;
             canvas.height = this.canvas.height;
             let ctx =  canvas.getContext("2d");
-            // let filt_w = canvas.width/50    
+            // let filt_w = canvas.width/50
             ctx.filter = ' grayscale(1) brightness(10000) contrast(10000)'; // blur('+filt_w+'px)
             ctx.fillStyle = "black";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(this.canvas, 0, 0);
             return canvas.toDataURL();
 
-        }, 
+        },
         get_img_mask_b64(){
             let canvas = document.createElement('canvas');
             canvas.width = this.canvasD.width;
@@ -250,18 +250,18 @@ export default {
             let ctx =  canvas.getContext("2d");
             ctx.drawImage(this.canvasD, 0, 0);
             ctx.drawImage(this.canvas, 0, 0);
-            
+
             return canvas.toDataURL();
-        } , 
+        } ,
 
         get_mask_for_cache(){
             return this.canvas.toDataURL();
         },
-       
+
        restore_mask(mask_b64){
             let canvas = this.canvas;
             let ctx =  canvas.getContext("2d");
-            
+
             var image = new Image();
             image.onload = function() {
                 ctx.drawImage(image, 0, 0);
@@ -278,7 +278,7 @@ export default {
                 // this.on_img_change()
             },
             deep: true
-        } , 
+        } ,
 
         'is_inpaint': {
             handler: function(v) {
@@ -287,7 +287,7 @@ export default {
                 }
             },
             deep: true
-        } , 
+        } ,
     }
 }
 </script>
