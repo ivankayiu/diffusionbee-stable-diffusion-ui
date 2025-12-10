@@ -65,7 +65,7 @@
 </template>
 
 <script>
-import ImageCanvas from '../components_bare/ImageCanvas.vue';
+import KonvaCanvas from '../components_bare/KonvaCanvas.vue';
 import { EventBus } from '../event_bus.js';
 import { send_to_py } from "../py_vue_bridge.js";
 
@@ -78,7 +78,7 @@ function createBlankCanvas(width, height) {
 const InteractiveCanvas = {
     name: 'InteractiveCanvas',
     props: { app: Object },
-    components: { ImageCanvas },
+    components: { KonvaCanvas },
     data() {
         return {
             current_mode: 'draw',
@@ -114,8 +114,8 @@ const InteractiveCanvas = {
     methods: {
         setMode(mode) {
             this.current_mode = mode;
-            if (this.$refs.interactive_image_canvas) {
-                this.$refs.interactive_image_canvas.clearSelection();
+            if (this.$refs.interactive_konva_canvas) {
+                this.$refs.interactive_konva_canvas.clearSelection();
             }
         },
         handleCommandInput() {
@@ -128,8 +128,8 @@ const InteractiveCanvas = {
         executeInpaintingCommand() {
             if (!this.command_text.trim() || !this.selection_box || this.is_generating) return;
 
-            const image_b64 = this.$refs.interactive_image_canvas.getStageAsBase64();
-            const mask_b64 = this.$refs.interactive_image_canvas.getMaskFromSelection();
+            const image_b64 = this.$refs.interactive_konva_canvas.getStageAsBase64();
+            const mask_b64 = this.$refs.interactive_konva_canvas.getMaskFromSelection();
             if (!image_b64 || !mask_b64) return;
 
             const params = {
@@ -139,8 +139,8 @@ const InteractiveCanvas = {
                 "mask_image_b64": mask_b64,
                 "selection_box": this.selection_box, // Pass selection box to backend
                 "num_imgs": 1, "ddim_steps": 50, "guidance_scale": 7.5,
-                "img_width": this.$refs.interactive_image_canvas.stage_config.width,
-                "img_height": this.$refs.interactive_image_canvas.stage_config.height,
+                "img_width": this.$refs.interactive_konva_canvas.stage_config.width,
+                "img_height": this.$refs.interactive_konva_canvas.stage_config.height,
                 "seed": Math.floor(Math.random() * 10000000),
             };
 
@@ -149,13 +149,13 @@ const InteractiveCanvas = {
             this.command_text = '';
         },
         handleNewImageAsset(image_data) {
-            if (this.$refs.interactive_image_canvas && image_data.generated_img_path) {
+            if (this.$refs.interactive_konva_canvas && image_data.generated_img_path) {
                 const image_path = `file://${image_data.generated_img_path}?t=${new Date().getTime()}`;
 
                 // --- THIS IS THE NEW LAYER LOGIC ---
                 // We use the full generated image, but use Konva's clipping
                 // function to only display the part within the selection box.
-                this.$refs.interactive_image_canvas.addLayerFromImage(
+                this.$refs.interactive_konva_canvas.addLayerFromImage(
                     image_path,
                     this.selection_box
                 );
@@ -166,8 +166,8 @@ const InteractiveCanvas = {
         },
         clearCanvas() {
             this.blank_canvas_b64 = createBlankCanvas(1024, 768);
-            if (this.$refs.interactive_image_canvas) {
-                 this.$refs.interactive_image_canvas.clearAllLayers();
+            if (this.$refs.interactive_konva_canvas) {
+                 this.$refs.interactive_konva_canvas.clearAllLayers();
             }
         },
         // ... (other methods: saveCommand, executeCommand, etc.)
